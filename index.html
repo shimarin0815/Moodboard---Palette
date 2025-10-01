@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Moodboard & Palette — 画像から色抽出・タグ生成・PNG書き出し</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg: #0b0e14;
+      --panel: #111827;
+      --muted: #6b7280;
+      --text: #e5e7eb;
+      --accent: #8b5cf6; /* violet-500 */
+      --accent-2: #06b6d4; /* cyan-500 */
+      --chip: #1f2937;
+      --ring: rgba(139,92,246,.35);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family:"Inter","Noto Sans JP",system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";
+      color:var(--text); background: radial-gradient(1200px 800px at 20% -10%, rgba(139,92,246,.12), transparent 60%), radial-gradient(1000px 700px at 120% 20%, rgba(6,182,212,.10), transparent 60%), var(--bg);
+      letter-spacing:.01em;
+    }
+    header{
+      position:sticky; top:0; z-index:10;
+      backdrop-filter: saturate(150%) blur(8px);
+      background: linear-gradient(to bottom, rgba(11,14,20,.85), rgba(11,14,20,.55));
+      border-bottom:1px solid rgba(255,255,255,.06);
+    }
+    .wrap{max-width:1100px; margin:0 auto; padding:20px;}
+    .row{display:flex; gap:14px; align-items:center; flex-wrap:wrap}
+    h1{font-size: clamp(22px, 3.2vw, 34px); margin:0; font-weight:700; letter-spacing:0.02em}
+    .sub{color:var(--muted); font-size:14px}
+    .btn{
+      appearance:none; border:0; padding:10px 14px; border-radius:14px; font-weight:600; cursor:pointer;
+      background:linear-gradient(135deg,var(--accent),var(--accent-2)); color:#0b0e14; box-shadow:0 10px 25px rgba(139,92,246,.25), inset 0 1px 0 rgba(255,255,255,.25);
+      transition: transform .06s ease, box-shadow .2s ease; font-size:14px;
+    }
+    .btn:hover{ transform: translateY(-1px); box-shadow:0 14px 30px rgba(139,92,246,.35), inset 0 1px 0 rgba(255,255,255,.25); }
+    .btn.secondary{background:#111827; color:#e5e7eb; box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);}
+    .btn.ghost{background:transparent; color:var(--text); box-shadow:none; border:1px solid rgba(255,255,255,.08)}
+    .kbd{background:#0b1220; border:1px solid rgba(255,255,255,.1); border-bottom-color:rgba(0,0,0,.4); padding:.2em .5em; border-radius:8px; font-size:.9em}
+
+    main{padding:32px 20px 40px; max-width:1100px; margin:0 auto}
+
+    .dropzone{
+      background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border:1px dashed rgba(255,255,255,.16);
+      border-radius:20px; padding:28px; text-align:center; transition: all .2s ease;
+      position:relative; overflow:hidden;
+    }
+    .dropzone.dragover{ border-color: var(--accent); box-shadow: 0 0 0 4px var(--ring); }
+    .dropzone h2{ margin:0 0 8px; font-size:20px}
+    .dz-actions{display:flex; justify-content:center; gap:12px; flex-wrap:wrap}
+
+    .gallery{ display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:16px; margin-top:22px; }
+
+    .card{ background:linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.02)); border:1px solid rgba(255,255,255,.08); border-radius:18px; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,.24); display:flex; flex-direction:column }
+    .thumb{ aspect-ratio: 4/3; width:100%; background:#0b1220; position:relative; display:grid; place-items:center }
+    .thumb img{ max-width:100%; max-height:100%; object-fit:contain }
+    .card-body{ padding:14px; display:flex; flex-direction:column; gap:10px }
+
+    .swatches{ display:grid; grid-template-columns: repeat(5, 1fr); gap:10px }
+    .swatch{ border-radius:12px; aspect-ratio:1/1; position:relative; box-shadow: inset 0 0 0 2px rgba(255,255,255,.1), 0 4px 16px rgba(0,0,0,.25); cursor:pointer }
+    .swatch .label{ position:absolute; bottom:8px; left:8px; right:8px; font-size:12px; font-weight:700; text-shadow: 0 1px 2px rgba(0,0,0,.6) }
+
+    .chips{ display:flex; flex-wrap:wrap; gap:8px }
+    .chip{ background:var(--chip); border:1px solid rgba(255,255,255,.06); padding:6px 10px; border-radius:999px; font-size:12px }
+
+    .card-actions{ display:flex; gap:8px; margin-top:4px; }
+
+    .muted{ color:var(--muted) }
+
+    details{ background: #0d1424; border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:12px 14px }
+    details > summary{ cursor:pointer; font-weight:600 }
+    details > * + *{ margin-top:8px }
+
+    footer{ color:var(--muted); text-align:center; padding:24px }
+
+    .toast{ position:fixed; left:50%; bottom:14px; transform: translateX(-50%); background:#111827; color:#e5e7eb; border:1px solid rgba(255,255,255,.1); padding:10px 14px; border-radius:12px; opacity:0; pointer-events:none; transition: opacity .2s ease, transform .2s ease }
+    .toast.show{ opacity:1; transform: translateX(-50%) translateY(-4px)}
+
+    .hidden-canvas{ position:fixed; right:-9999px; bottom:-9999px }
+
+    .tagline{font-size:14px; color:var(--muted)}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <div class="row">
+        <h1>Moodboard & Palette</h1>
+        <span class="tagline">画像をドラッグ&ドロップ → キャンバスから代表色抽出＆タグ自動生成</span>
+        <div style="flex:1"></div>
+        <button class="btn secondary" id="exportBoard">ボードをPNG書き出し</button>
+        <button class="btn ghost" id="resetBtn" title="すべて削除">リセット</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="dropzone" id="dropzone">
+      <svg width="54" height="54" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="position:absolute;right:-20px;top:-20px;opacity:.18">
+        <path d="M7 10l5-5 5 5M12 5v14" stroke="white" stroke-opacity=".45" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <h2>ここに画像をドラッグ & ドロップ</h2>
+      <p class="sub">または</p>
+      <div class="dz-actions">
+        <input type="file" id="fileInput" accept="image/*" multiple hidden>
+        <button class="btn" id="browseBtn">画像を選ぶ</button>
+        <span class="sub">ヒント: 複数枚OK / <span class="kbd">Ctrl</span> or <span class="kbd">⌘</span> + <span class="kbd">V</span> で貼り付けも可能</span>
+      </div>
+    </section>
+
+    <div class="gallery" id="gallery"></div>
+
+    <section style="margin-top:24px">
+      <details>
+        <summary>学びポイント（クリックで開く）</summary>
+        <ul>
+          <li><b>Canvas</b>：<code>getImageData</code> で画像のピクセル情報（RGB）を読み取り、代表色を計算。</li>
+          <li><b>ファイル読み込み</b>：<code>FileReader</code> で画像を <code>data:</code> URL にしてプレビュー＆解析。</li>
+          <li><b>画像出力</b>：<code>canvas.toDataURL("image/png")</code> でムードボード画像を作り、ダウンロード。</li>
+          <li><b>タグ自動生成（ルールベース）</b>：色味や明るさの統計から「ビビッド/クール/パステル/モノトーン…」などのタグを決定。</li>
+          <li><b>自然言語の色名</b>：HSL 値から「やわらかい青」「深い緑」などの日本語表現を作成。</li>
+        </ul>
+      </details>
+    </section>
+  </main>
+
+  <footer>
+    © 2025 Moodboard & Palette. 学習用途で自由に改変してください。
+  </footer>
+
+  <canvas id="workCanvas" class="hidden-canvas"></canvas>
+  <div class="toast" id="toast">コピーしました</div>
+
+<script>
+(() => {
+  // ===== Utilities =====
+  const $ = (sel, el=document) => el.querySelector(sel);
+  const $$ = (sel, el=document) => Array.from(el.querySelectorAll(sel));
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+  const lerp = (a,b,t)=>a+(b-a)*t;
+
+  const toastEl = $('#toast');
+  let toastTimer = null;
+  function toast(msg){
+    toastEl.textContent = msg; toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 1400);
+  }
+
+  // Color helpers
+  function rgbToHex(r,g,b){
+    return '#' + [r,g,b].map(v => v.toString(16).padStart(2,'0')).join('').toUpperCase();
+  }
+  function hexToRgb(hex){
+    if(hex.startsWith('#')) hex=hex.slice(1);
+    if(hex.length===3) hex = hex.split('').map(c=>c+c).join('');
+    const num = parseInt(hex,16);
+    return {r:(num>>16)&255, g:(num>>8)&255, b:num&255};
+  }
+  function rgbToHsl(r, g, b){
+    r/=255; g/=255; b/=255;
+    const max = Math.max(r,g,b), min=Math.min(r,g,b);
+    let h, s, l=(max+min)/2;
+    if(max===min){ h=0; s=0; }
+    else{
+      const d = max-min;
+      s = l>0.5 ? d/(2-max-min) : d/(max+min);
+      switch(max){
+        case r: h=((g-b)/d + (g<b?6:0)); break;
+        case g: h=((b-r)/d + 2); break;
+        case b: h=((r-g)/d + 4); break;
+      }
+      h/=6;
+    }
+    return {h: (h*360+360)%360, s, l};
+  }
+  function hslToRgb(h, s, l){
+    h/=360;
+    let r,g,b;
+    if(s===0){ r=g=b=l; }
+    else{
+      const hue2rgb=(p,q,t)=>{ if(t<0) t+=1; if(t>1) t-=1; if(t<1/6) return p+(q-p)*6*t; if(t<1/2) return q; if(t<2/3) return p+(q-p)*(2/3 - t)*6; return p; };
+      const q = l<.5 ? l*(1+s) : l + s - l*s;
+      const p = 2*l - q;
+      r=hue2rgb(p,q,h+1/3); g=hue2rgb(p,q,h); b=hue2rgb(p,q,h-1/3);
+    }
+    return {r:Math.round(r*255), g:Math.round(g*255), b:Math.round(b*255)};
+  }
+  function luminance({r,g,b}){
+    // WCAG relative luminance
+    const sr=[r,g,b].map(v=>{
+      v/=255; return v<=0.03928? v/12.92 : Math.pow((v+0.055)/1.055, 2.4);
+    });
+    return 0.2126*sr[0]+0.7152*sr[1]+0.0722*sr[2];
+  }
+  function textColorOn(bg){
+    return luminance(bg) > 0.42 ? '#0b0e14' : '#fafafa';
+  }
+
+  // ===== Natural language color names (JA) =====
+  function hueName(h){
+    if(h<15||h>=345) return '赤';
+    if(h<35) return 'オレンジ';
+    if(h<55) return '黄色';
+    if(h<80) return '黄緑';
+    if(h<150) return '緑';
+    if(h<190) return '青緑';
+    if(h<250) return '青';
+    if(h<285) return '藍';
+    if(h<320) return '紫';
+    return '赤紫';
+  }
+  function describeColorFromHSL(h, s, l){
+    // grayscale handling
+    if(s<0.06){
+      if(l>0.9) return 'ホワイト系';
+      if(l<0.1) return 'ブラック系';
+      return 'グレー系';
+    }
+    const parts=[];
+    if(s>0.72 && l>0.35 && l<0.75) parts.push('鮮やかな');
+    if(s<0.32 && l>=0.35) parts.push('やわらかい');
+    if(l>0.82) parts.push('明るい');
+    if(l<0.28) parts.push('深い');
+    // tone nuance warm/cool
+    if((h>=0 && h<60) || (h>=330 && h<360)) parts.push('あたたかい');
+    if(h>=180 && h<280) parts.push('クールな');
+    const base = hueName(h);
+    // avoid duplicate adjectives
+    const uniq=[...new Set(parts)];
+    return (uniq.length? uniq.join('')+' ' : '') + base;
+  }
+
+  // ===== K-Means color clustering =====
+  function kmeansColors(pixels, k=5, maxIter=12){
+    // pixels: Uint8ClampedArray of RGBA values (flattened)
+    // Downsample: sample every n-th pixel for speed
+    const step = Math.max(1, Math.floor((pixels.length/4) / 12000));
+    const samples=[];
+    for(let i=0;i<pixels.length;i+=4*step){
+      const a = pixels[i+3];
+      if(a<10) continue; // skip transparent
+      const r = pixels[i], g=pixels[i+1], b=pixels[i+2];
+      // ignore near-black/white if needed? keep for now
+      samples.push([r,g,b]);
+    }
+    if(samples.length===0){ return []; }
+    // init centers (kmeans++) simplified
+    const centers=[];
+    // pick first random
+    centers.push(samples[(Math.random()*samples.length)|0]);
+    while(centers.length<k){
+      const dists = samples.map(p=>{
+        let minD=Infinity; for(const c of centers){ const dx=p[0]-c[0], dy=p[1]-c[1], dz=p[2]-c[2]; const d=dx*dx+dy*dy+dz*dz; if(d<minD) minD=d; }
+        return minD;
+      });
+      // choose point with prob proportional to distance^2
+      let sum = dists.reduce((a,b)=>a+b,0) || 1;
+      let r = Math.random()*sum, idx=0;
+      while(r>0 && idx<samples.length){ r -= dists[idx++]; }
+      centers.push(samples[Math.min(idx, samples.length-1)]);
+    }
+
+    const assignments=new Array(samples.length).fill(0);
+    for(let iter=0; iter<maxIter; iter++){
+      // assign
+      for(let i=0;i<samples.length;i++){
+        let best=0, bestD=Infinity;
+        for(let c=0;c<centers.length;c++){
+          const dx=samples[i][0]-centers[c][0];
+          const dy=samples[i][1]-centers[c][1];
+          const dz=samples[i][2]-centers[c][2];
+          const d=dx*dx+dy*dy+dz*dz;
+          if(d<bestD){bestD=d;best=c;}
+        }
+        assignments[i]=best;
+      }
+      // update
+      const sums=Array.from({length:k},()=>[0,0,0,0]);
+      for(let i=0;i<samples.length;i++){
+        const a=assignments[i]; const p=samples[i];
+        sums[a][0]+=p[0]; sums[a][1]+=p[1]; sums[a][2]+=p[2]; sums[a][3]++;
+      }
+      for(let c=0;c<k;c++){
+        if(sums[c][3]===0) continue; // empty cluster keep old center
+        centers[c]=[ (sums[c][0]/sums[c][3])|0, (sums[c][1]/sums[c][3])|0, (sums[c][2]/sums[c][3])|0 ];
+      }
+    }
+    // cluster sizes
+    const counts=new Array(k).fill(0);
+    for(const a of assignments) counts[a]++;
+    // pairs (center, count)
+    let clusters = centers.map((c,i)=>({ rgb:{r:c[0],g:c[1],b:c[2]}, count:counts[i] }));
+    // remove near-duplicates (within delta)
+    const filtered=[]; const delta=18;
+    clusters.sort((a,b)=>b.count-a.count);
+    for(const c of clusters){
+      if(filtered.some(f=> Math.hypot(f.rgb.r-c.rgb.r, f.rgb.g-c.rgb.g, f.rgb.b-c.rgb.b) < delta)) continue;
+      filtered.push(c);
+      if(filtered.length>=k) break;
+    }
+    // sort by lightness then hue for consistent order
+    filtered.forEach(c=>{ const hsl=rgbToHsl(c.rgb.r,c.rgb.g,c.rgb.b); c.hsl=hsl; c.hex=rgbToHex(c.rgb.r,c.rgb.g,c.rgb.b);} );
+    filtered.sort((a,b)=> a.hsl.l - b.hsl.l || a.hsl.h - b.hsl.h);
+    return filtered;
+  }
+
+  // ===== Rule-based tag generator =====
+  function generateTags(colors){
+    if(!colors || !colors.length) return [];
+    const hsls = colors.map(c=>c.hsl);
+    const sats = hsls.map(h=>h.s);
+    const lights = hsls.map(h=>h.l);
+    const avg = arr => arr.reduce((a,b)=>a+b,0)/arr.length;
+    const avgS = avg(sats), avgL = avg(lights);
+    const hues = hsls.map(h=>h.h);
+    // hue categories
+    const count = { red:0, orange:0, yellow:0, green:0, blue:0, purple:0, gray:0 };
+    for(const hsl of hsls){
+      if(hsl.s<0.06){ count.gray++; continue; }
+      const h=hsl.h;
+      if(h<15||h>=345) count.red++;
+      else if(h<50) count.orange++;
+      else if(h<85) count.yellow++;
+      else if(h<170) count.green++;
+      else if(h<255) count.blue++;
+      else count.purple++;
+    }
+    const total = hsls.length;
+    const tags = new Set();
+
+    // vivid / pastel / muted
+    if(avgS>0.62) tags.add('ビビッド');
+    if(avgS<0.28 && avgL>0.6) tags.add('パステル');
+    if(count.gray/total > 0.5) tags.add('モノトーン');
+
+    // warm / cool
+    const warmRatio = (count.red + count.orange + count.yellow) / total;
+    const coolRatio = (count.green + count.blue + count.purple) / total;
+    if(warmRatio>0.55) tags.add('あたたかい');
+    if(coolRatio>0.55) tags.add('クール');
+
+    // nature / energetic
+    if((count.green/total > 0.35) && (count.blue/total > 0.15)) tags.add('ナチュラル');
+    if((count.red+count.orange)/total > 0.45) tags.add('エネルギッシュ');
+
+    // contrast
+    const lums = colors.map(c=>luminance(c.rgb));
+    const maxL = Math.max(...lums), minL=Math.min(...lums);
+    if(maxL - minL > 0.55) tags.add('高コントラスト'); else tags.add('やわらかいトーン');
+
+    // brightness
+    if(avgL>0.7) tags.add('明るい'); if(avgL<0.3) tags.add('ダーク');
+
+    return Array.from(tags).slice(0,6);
+  }
+
+  // ===== Main app state =====
+  const state = {
+    cards: [], // {id, img, colors:[{rgb,hsl,hex}], tags:[], nameList:[]}
+  };
+  let idCounter = 1;
+
+  function createCard(imgEl, colors){
+    const id = idCounter++;
+    const tags = generateTags(colors);
+    const nameList = colors.map(c=> describeColorFromHSL(c.hsl.h, c.hsl.s, c.hsl.l));
+
+    const card = document.createElement('article');
+    card.className = 'card'; card.dataset.id = String(id);
+    card.innerHTML = `
+      <div class="thumb"><img alt="preview" /></div>
+      <div class="card-body">
+        <div class="swatches"></div>
+        <div class="chips"></div>
+        <div class="card-actions">
+          <button class="btn secondary small" data-action="export">PNG書き出し</button>
+          <button class="btn ghost small" data-action="remove">削除</button>
+        </div>
+      </div>`;
+
+    const thumbImg = $('img', card);
+    thumbImg.src = imgEl.src;
+
+    const swatches = $('.swatches', card);
+    colors.forEach((c, i)=>{
+      const div = document.createElement('div'); div.className='swatch';
+      const fg = textColorOn(c.rgb);
+      div.style.background = c.hex; div.title = `${nameList[i]}  ${c.hex}`;
+      div.innerHTML = `<div class="label" style="color:${fg}">${nameList[i]}<br>${c.hex}</div>`;
+      div.addEventListener('click', ()=>{
+        navigator.clipboard.writeText(c.hex).then(()=> toast(`${c.hex} をコピーしました`));
+      });
+      swatches.appendChild(div);
+    });
+
+    const chips = $('.chips', card);
+    tags.forEach(t=>{
+      const span = document.createElement('span'); span.className='chip'; span.textContent = t; chips.appendChild(span);
+    });
+
+    $('.card-actions [data-action="remove"]', card).addEventListener('click', ()=> removeCard(id));
+    $('.card-actions [data-action="export"]', card).addEventListener('click', ()=> exportCardPNG(id));
+
+    $('#gallery').prepend(card);
+
+    state.cards.unshift({ id, img: imgEl, colors, tags, nameList });
+  }
+
+  function removeCard(id){
+    const idx = state.cards.findIndex(c=>c.id===id);
+    if(idx>=0){ state.cards.splice(idx,1); }
+    const node = $(`.card[data-id="${id}"]`);
+    if(node) node.remove();
+  }
+
+  // ===== Image processing =====
+  const workCanvas = $('#workCanvas');
+  const wctx = workCanvas.getContext('2d', {willReadFrequently:true});
+
+  function analyzeImage(img){
+    // draw into canvas (downscale for speed, keep aspect)
+    const maxW = 420, maxH = 420;
+    let w = img.naturalWidth, h=img.naturalHeight;
+    const scale = Math.min(1, maxW/w, maxH/h);
+    w = Math.max(1, Math.round(w*scale)); h = Math.max(1, Math.round(h*scale));
+    workCanvas.width = w; workCanvas.height = h;
+    wctx.clearRect(0,0,w,h);
+    wctx.drawImage(img, 0, 0, w, h);
+    const {data} = wctx.getImageData(0,0,w,h);
+    const colors = kmeansColors(data, 5, 12);
+    return colors;
+  }
+
+  // ===== Export PNG =====
+  function exportCardPNG(id){
+    const card = state.cards.find(c=>c.id===id); if(!card) return;
+    const pad = 40; const w = 1200; const h = 800;
+    const c = document.createElement('canvas'); c.width=w; c.height=h; const ctx=c.getContext('2d');
+    // bg
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,w,h);
+    // title
+    ctx.fillStyle = '#111827'; ctx.font = '600 36px Inter, Noto Sans JP, sans-serif';
+    ctx.fillText('Moodboard & Palette', pad, pad+8);
+    // draw image
+    const imgW = Math.min(660, w - pad*2), imgH = 420;
+    const imgX = pad, imgY = pad+30;
+    // contain into imgW x imgH
+    const ratio = Math.min(imgW/card.img.naturalWidth, imgH/card.img.naturalHeight);
+    const drawW = Math.round(card.img.naturalWidth*ratio);
+    const drawH = Math.round(card.img.naturalHeight*ratio);
+    const offsetX = imgX + Math.floor((imgW-drawW)/2);
+    const offsetY = imgY + Math.floor((imgH-drawH)/2);
+    ctx.fillStyle = '#f3f4f6'; ctx.fillRect(imgX, imgY, imgW, imgH);
+    ctx.drawImage(card.img, offsetX, offsetY, drawW, drawH);
+    // swatches
+    const swX = pad + imgW + 30; const swY = imgY; const swSize = 80; const swGap = 22;
+    ctx.font = '700 16px Inter, Noto Sans JP, sans-serif';
+    card.colors.forEach((col, i)=>{
+      const x = swX; const y = swY + i*(swSize+swGap);
+      ctx.fillStyle = col.hex; ctx.fillRect(x, y, swSize, swSize);
+      // label
+      const fg = textColorOn(col.rgb);
+      ctx.fillStyle = fg; ctx.font = '700 14px Inter, Noto Sans JP, sans-serif';
+      ctx.fillText(col.hex, x+10, y+swSize-12);
+      ctx.fillStyle = '#111827'; ctx.font = '600 18px Inter, Noto Sans JP, sans-serif';
+      ctx.fillText(card.nameList[i], x+swSize+16, y+30);
+    });
+    // tags
+    let tx = pad, ty = imgY+imgH+40;
+    ctx.font = '600 16px Inter, Noto Sans JP, sans-serif';
+    for(const tag of card.tags){
+      const wText = ctx.measureText(tag).width;
+      const boxW = wText + 28; const boxH = 34;
+      ctx.fillStyle = '#f3f4f6'; ctx.fillRect(tx, ty, boxW, boxH);
+      ctx.strokeStyle = '#e5e7eb'; ctx.strokeRect(tx+.5, ty+.5, boxW-1, boxH-1);
+      ctx.fillStyle = '#111827'; ctx.fillText(tag, tx+14, ty+23);
+      tx += boxW + 10;
+    }
+    // footer
+    ctx.fillStyle='#6b7280'; ctx.font='14px Inter, Noto Sans JP, sans-serif';
+    ctx.fillText('Generated by Canvas getImageData / k-means / toDataURL', pad, h-pad+2);
+
+    const url = c.toDataURL('image/png');
+    const a = document.createElement('a'); a.href=url; a.download='moodboard-card.png'; a.click();
+  }
+
+  function exportBoardPNG(){
+    if(state.cards.length===0){ toast('カードがありません'); return; }
+    const perH = 820; const w = 1400; const h = perH*state.cards.length + 80;
+    const c = document.createElement('canvas'); c.width=w; c.height=h; const ctx=c.getContext('2d');
+    ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,w,h);
+    let y = 40;
+    state.cards.forEach((card, idx)=>{
+      // draw simple framed card
+      ctx.fillStyle='#111827'; ctx.font='700 26px Inter, Noto Sans JP, sans-serif';
+      ctx.fillText(`Card ${state.cards.length-idx}`, 40, y+6);
+      // image
+      const imgW=820, imgH=480, pad=40; const imgX=40, imgY=y+24;
+      const ratio = Math.min(imgW/card.img.naturalWidth, imgH/card.img.naturalHeight);
+      const drawW = Math.round(card.img.naturalWidth*ratio);
+      const drawH = Math.round(card.img.naturalHeight*ratio);
+      const offsetX = imgX + Math.floor((imgW-drawW)/2);
+      const offsetY = imgY + Math.floor((imgH-drawH)/2);
+      ctx.fillStyle='#f3f4f6'; ctx.fillRect(imgX, imgY, imgW, imgH);
+      ctx.drawImage(card.img, offsetX, offsetY, drawW, drawH);
+      // swatches
+      const swX = imgX+imgW+30, swY = imgY, swSize=74, swGap=18;
+      ctx.font='700 16px Inter, Noto Sans JP, sans-serif';
+      card.colors.forEach((col,i)=>{
+        const x=swX, yy=swY+i*(swSize+swGap);
+        ctx.fillStyle=col.hex; ctx.fillRect(x, yy, swSize, swSize);
+        const fg = textColorOn(col.rgb);
+        ctx.fillStyle=fg; ctx.fillText(col.hex, x+10, yy+swSize-10);
+        ctx.fillStyle='#111827'; ctx.font='600 18px Inter, Noto Sans JP, sans-serif';
+        ctx.fillText(card.nameList[i], x+swSize+16, yy+30);
+      });
+      // tags
+      let tx=imgX, ty=imgY+imgH+34; ctx.font='600 16px Inter, Noto Sans JP, sans-serif';
+      for(const tag of card.tags){ const wText=ctx.measureText(tag).width; const boxW=wText+26; const boxH=32; ctx.fillStyle='#f3f4f6'; ctx.fillRect(tx,ty,boxW,boxH); ctx.strokeStyle='#e5e7eb'; ctx.strokeRect(tx+.5,ty+.5,boxW-1,boxH-1); ctx.fillStyle='#111827'; ctx.fillText(tag, tx+12, ty+22); tx+=boxW+10; }
+      y += perH;
+    });
+    const url = c.toDataURL('image/png');
+    const a = document.createElement('a'); a.href=url; a.download='moodboard-board.png'; a.click();
+  }
+
+  $('#exportBoard').addEventListener('click', exportBoardPNG);
+
+  // ===== Input handling (drag/drop, browse, paste) =====
+  const dz = $('#dropzone');
+  const fileInput = $('#fileInput');
+  $('#browseBtn').addEventListener('click', ()=> fileInput.click());
+
+  function handleFiles(files){
+    const list = Array.from(files).filter(f=> f.type.startsWith('image/'));
+    if(list.length===0){ toast('画像ファイルを選んでください'); return; }
+    for(const file of list){
+      const reader = new FileReader();
+      reader.onload = e => {
+        const img = new Image();
+        img.onload = () => {
+          const colors = analyzeImage(img);
+          if(!colors.length){ toast('色の抽出に失敗しました'); return; }
+          createCard(img, colors);
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+
+  fileInput.addEventListener('change', (e)=> handleFiles(e.target.files));
+
+  ['dragenter','dragover','dragleave','drop'].forEach(ev=>{
+    document.addEventListener(ev, e=>{ e.preventDefault(); e.stopPropagation();});
+  });
+  ['dragenter','dragover'].forEach(ev=>{
+    dz.addEventListener(ev, ()=> dz.classList.add('dragover'));
+  });
+  ;['dragleave','drop'].forEach(ev=>{
+    dz.addEventListener(ev, ()=> dz.classList.remove('dragover'));
+  });
+  dz.addEventListener('drop', e=> handleFiles(e.dataTransfer.files));
+
+  // paste image from clipboard
+  document.addEventListener('paste', e=>{
+    const items = e.clipboardData?.items || [];
+    const files = [];
+    for(const it of items){ if(it.type.startsWith('image/')) files.push(it.getAsFile()); }
+    if(files.length) handleFiles(files);
+  });
+
+  // reset
+  $('#resetBtn').addEventListener('click', ()=>{
+    state.cards.splice(0); $('#gallery').innerHTML='';
+    toast('リセットしました');
+  });
+})();
+</script>
+</body>
+</html>
